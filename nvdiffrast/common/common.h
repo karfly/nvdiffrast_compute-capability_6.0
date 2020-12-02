@@ -185,48 +185,63 @@ template<class T> static __device__ __forceinline__ void swap(T& a, T& b)       
 //------------------------------------------------------------------------
 // Coalesced atomics. These are all done via macros.
 
+// #define CA_TEMP       _ca_temp
+// #define CA_TEMP_PARAM float* CA_TEMP
+// #define CA_DECLARE_TEMP(threads_per_block) \
+//     __shared__ float CA_TEMP[(threads_per_block)]
+
+// #define CA_SET_GROUP_MASK(group, thread_mask)                   \
+//     bool   _ca_leader;                                          \
+//     float* _ca_ptr;                                             \
+//     do {                                                        \
+//         int tidx   = threadIdx.x + blockDim.x * threadIdx.y;    \
+//         int lane   = tidx & 31;                                 \
+//         int warp   = tidx >> 5;                                 \
+//         int tmask  = __match_any_sync((thread_mask), (group));  \
+//         int leader = __ffs(tmask) - 1;                          \
+//         _ca_leader = (leader == lane);                          \
+//         _ca_ptr    = &_ca_temp[((warp << 5) + leader)];         \
+//     } while(0)
+
+// #define CA_SET_GROUP(group) \
+//     CA_SET_GROUP_MASK((group), 0xffffffffu)
+
+// #define caAtomicAdd(ptr, value)         \
+//     do {                                \
+//         if (_ca_leader)                 \
+//             *_ca_ptr = 0.f;             \
+//         atomicAdd(_ca_ptr, (value));    \
+//         if (_ca_leader)                 \
+//             atomicAdd((ptr), *_ca_ptr); \
+//     } while(0)
+
+// #define caAtomicAdd3_xyw(ptr, x, y, w)  \
+//     do {                                \
+//         caAtomicAdd((ptr), (x));        \
+//         caAtomicAdd((ptr)+1, (y));      \
+//         caAtomicAdd((ptr)+3, (w));      \
+//     } while(0)
+
+// #define caAtomicAddTexture(ptr, level, idx, value)  \
+//     do {                                            \
+//         CA_SET_GROUP((idx) ^ ((level) << 27));      \
+//         caAtomicAdd((ptr)+(idx), (value));          \
+//     } while(0)
+
+// Support for compute capability 6.0. Reference: https://github.com/NVlabs/nvdiffrast/issues/4
 #define CA_TEMP       _ca_temp
-#define CA_TEMP_PARAM float* CA_TEMP
-#define CA_DECLARE_TEMP(threads_per_block) \
-    __shared__ float CA_TEMP[(threads_per_block)]
-
-#define CA_SET_GROUP_MASK(group, thread_mask)                   \
-    bool   _ca_leader;                                          \
-    float* _ca_ptr;                                             \
-    do {                                                        \
-        int tidx   = threadIdx.x + blockDim.x * threadIdx.y;    \
-        int lane   = tidx & 31;                                 \
-        int warp   = tidx >> 5;                                 \
-        int tmask  = __match_any_sync((thread_mask), (group));  \
-        int leader = __ffs(tmask) - 1;                          \
-        _ca_leader = (leader == lane);                          \
-        _ca_ptr    = &_ca_temp[((warp << 5) + leader)];         \
-    } while(0)
-
-#define CA_SET_GROUP(group) \
-    CA_SET_GROUP_MASK((group), 0xffffffffu)
-
-#define caAtomicAdd(ptr, value)         \
-    do {                                \
-        if (_ca_leader)                 \
-            *_ca_ptr = 0.f;             \
-        atomicAdd(_ca_ptr, (value));    \
-        if (_ca_leader)                 \
-            atomicAdd((ptr), *_ca_ptr); \
-    } while(0)
-
+#define CA_TEMP_PARAM float CA_TEMP
+#define CA_DECLARE_TEMP(threads_per_block) CA_TEMP_PARAM
+#define CA_SET_GROUP_MASK(group, thread_mask)
+#define CA_SET_GROUP(group)
+#define caAtomicAdd(ptr, value) atomicAdd((ptr), (value))
 #define caAtomicAdd3_xyw(ptr, x, y, w)  \
     do {                                \
-        caAtomicAdd((ptr), (x));        \
-        caAtomicAdd((ptr)+1, (y));      \
-        caAtomicAdd((ptr)+3, (w));      \
+        atomicAdd((ptr), (x));          \
+        atomicAdd((ptr)+1, (y));        \
+        atomicAdd((ptr)+3, (w));        \
     } while(0)
-
-#define caAtomicAddTexture(ptr, level, idx, value)  \
-    do {                                            \
-        CA_SET_GROUP((idx) ^ ((level) << 27));      \
-        caAtomicAdd((ptr)+(idx), (value));          \
-    } while(0)
+#define caAtomicAddTexture(ptr, level, idx, value) atomicAdd((ptr)+(idx), (value))
 
 //------------------------------------------------------------------------
 #endif // __CUDACC__
